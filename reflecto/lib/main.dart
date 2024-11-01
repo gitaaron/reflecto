@@ -38,8 +38,8 @@ class TranscriptionLogPageState extends State<TranscriptionLogPage> {
   }
 
   Future<void> _fetchLog() async {
-    final response = await http
-        .get(Uri.parse('https://your-vercel-app-url.vercel.app/api/get-log'));
+    final response =
+        await http.get(Uri.parse('https://reflecto.vercel.app/api/get-log'));
 
     if (response.statusCode == 200) {
       setState(() {
