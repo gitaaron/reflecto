@@ -1,31 +1,58 @@
 import { Redis } from '@upstash/redis';
 
-let redis;
-try {
-  if (!process.env.REDIS_URL) {
-    throw new Error('Redis connection URL is missing');
+// Initialize Redis client outside the handler
+let redis = null;
+let initializationError = null;
+
+const initializeRedis = () => {
+  if (redis) return; // Already initialized
+
+  try {
+    if (!process.env.REDIS_URL) {
+      throw new Error('REDIS_URL environment variable is not configured');
+    }
+    redis = new Redis(process.env.REDIS_URL);
+  } catch (error) {
+    initializationError = error;
+    console.error('Failed to initialize Redis client:', error);
   }
-  redis = new Redis(process.env.REDIS_URL);
-} catch (error) {
-  console.error('Failed to initialize Redis client:', error);
-}
+};
+
+// Initialize on module load
+initializeRedis();
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') {
-    try {
-      if (!redis) {
-        throw new Error('Redis client is not initialized');
-      }
-      const logs = await redis.lrange('transcription_log', 0, -1);
-      
-      const parsedLogs = logs.map(log => JSON.parse(log));
-      
-      res.status(200).json({ message: 'Logs retrieved successfully', data: parsedLogs });
-    } catch (error) {
-      console.error('Error fetching log:', error);
-      res.status(500).json({ error: 'Error fetching log', details: error.message });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Try to initialize Redis if it failed on startup
+  if (!redis && !initializationError) {
+    initializeRedis();
+  }
+
+  try {
+    // Check if Redis is properly initialized
+    if (!redis) {
+      throw new Error(
+        `Redis client is not initialized. Reason: ${
+          initializationError ? initializationError.message : 'Unknown error'
+        }`
+      );
     }
-  } else {
-    res.status(405).json({ error: 'Method not allowed' });
+
+    const logs = await redis.lrange('transcription_log', 0, -1);
+    const parsedLogs = logs.map(log => JSON.parse(log));
+
+    return res.status(200).json({
+      message: 'Logs retrieved successfully',
+      data: parsedLogs
+    });
+  } catch (error) {
+    console.error('Error in log handler:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch logs',
+      details: error.message
+    });
   }
 }
