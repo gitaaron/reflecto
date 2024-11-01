@@ -1,61 +1,57 @@
-import { Redis } from '@upstash/redis';
+import { createClient } from 'redis';
 
 let redis = null;
-let initializationError = null;
+let connectionPromise = null;
 
-const initializeRedis = () => {
-  if (redis) return; // Already initialized
+const initializeRedis = async () => {
+  if (redis) return redis;
 
   try {
     if (!process.env.REDIS_URL) {
       throw new Error('REDIS_URL environment variable is not configured');
     }
 
-    // Parse the original Redis URL
-    const originalUrl = new URL(process.env.REDIS_URL);
-    const password = originalUrl.password;
-    const host = originalUrl.hostname;
-    const port = originalUrl.port;
-
-    // Construct the Upstash-compatible HTTPS URL
-    const upstashUrl = `https://${host}:${port}`;
-    
-    // Initialize Redis with Upstash format
-    redis = new Redis({
-      url: upstashUrl,
-      token: password
+    redis = createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        tls: true,
+        rejectUnauthorized: false // Required for some Redis Cloud configurations
+      }
     });
 
+    // Error handling
+    redis.on('error', (error) => {
+      console.error('Redis Client Error:', error);
+    });
+
+    // Connect to Redis
+    await redis.connect();
+    return redis;
   } catch (error) {
-    initializationError = error;
     console.error('Failed to initialize Redis client:', error);
+    redis = null;
+    throw error;
   }
 };
 
-// Initialize on module load
-initializeRedis();
+// Get or create Redis connection
+const getRedisClient = async () => {
+  if (!connectionPromise) {
+    connectionPromise = initializeRedis();
+  }
+  return connectionPromise;
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Try to initialize Redis if it failed on startup
-  if (!redis && !initializationError) {
-    initializeRedis();
-  }
-
   try {
-    // Check if Redis is properly initialized
-    if (!redis) {
-      throw new Error(
-        `Redis client is not initialized. Reason: ${
-          initializationError ? initializationError.message : 'Unknown error'
-        }`
-      );
-    }
-
-    const logs = await redis.lrange('transcription_log', 0, -1);
+    const client = await getRedisClient();
+    
+    // Use LRANGE to get all logs
+    const logs = await client.lRange('transcription_log', 0, -1);
     const parsedLogs = logs.map(log => JSON.parse(log));
 
     return res.status(200).json({
