@@ -11,16 +11,19 @@ const initializeRedis = () => {
       throw new Error('REDIS_URL environment variable is not configured');
     }
 
-    // Parse the Redis URL to extract components
-    const url = new URL(process.env.REDIS_URL);
-    const password = url.password;
-    const host = url.hostname;
-    const port = url.port;
+    // Parse the original Redis URL
+    const originalUrl = new URL(process.env.REDIS_URL);
+    const password = originalUrl.password;
+    const host = originalUrl.hostname;
+    const port = originalUrl.port;
 
-    // Create Redis client with the correct configuration format
+    // Construct the Upstash-compatible HTTPS URL
+    const upstashUrl = `https://${host}:${port}`;
+    
+    // Initialize Redis with Upstash format
     redis = new Redis({
-      url: `redis://${host}:${port}`,
-      token: password  // Use the password as the token
+      url: upstashUrl,
+      token: password
     });
 
   } catch (error) {
