@@ -11,25 +11,35 @@ const initializeRedis = async () => {
       throw new Error('REDIS_URL environment variable is not configured');
     }
 
+    // Parse the Redis URL to handle the connection manually
+    const url = new URL(process.env.REDIS_URL);
+    
     redis = createClient({
-      url: process.env.REDIS_URL,
+      username: url.username || 'default',
+      password: url.password,
       socket: {
+        host: url.hostname,
+        port: parseInt(url.port),
         tls: true,
-        rejectUnauthorized: false // Required for some Redis Cloud configurations
+        servername: url.hostname, // Add SNI support
       }
     });
 
     // Error handling
     redis.on('error', (error) => {
       console.error('Redis Client Error:', error);
+      redis = null;
+      connectionPromise = null;
     });
 
     // Connect to Redis
     await redis.connect();
+    console.log('Successfully connected to Redis');
     return redis;
   } catch (error) {
     console.error('Failed to initialize Redis client:', error);
     redis = null;
+    connectionPromise = null;
     throw error;
   }
 };
@@ -60,6 +70,9 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Error in log handler:', error);
+    // Reset connection on error
+    redis = null;
+    connectionPromise = null;
     return res.status(500).json({
       error: 'Failed to fetch logs',
       details: error.message
