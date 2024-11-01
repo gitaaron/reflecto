@@ -2,10 +2,15 @@ import express from 'express';
 import { Redis } from '@upstash/redis';
 import axios from 'axios';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+let redis;
+try {
+  if (!process.env.REDIS_URL) {
+    throw new Error('Redis connection URL is missing');
+  }
+  redis = new Redis(process.env.REDIS_URL);
+} catch (error) {
+  console.error('Failed to initialize Redis client:', error);
+}
 
 const app = express();
 
@@ -27,6 +32,9 @@ app.post('/api/webhook', async (req, res) => {
 
       const transcription = response.data;
       
+      if (!redis) {
+        return res.status(500).json({ error: 'Redis client is not initialized' });
+      }
       // Store the transcription log in Redis
       await redis.lpush('transcription_log', JSON.stringify({
         meetingId,
