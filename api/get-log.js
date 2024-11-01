@@ -1,6 +1,5 @@
 import { Redis } from '@upstash/redis';
 
-// Initialize Redis client outside the handler
 let redis = null;
 let initializationError = null;
 
@@ -11,7 +10,19 @@ const initializeRedis = () => {
     if (!process.env.REDIS_URL) {
       throw new Error('REDIS_URL environment variable is not configured');
     }
-    redis = new Redis(process.env.REDIS_URL);
+
+    // Parse the Redis URL to extract components
+    const url = new URL(process.env.REDIS_URL);
+    const password = url.password;
+    const host = url.hostname;
+    const port = url.port;
+
+    // Create Redis client with the correct configuration format
+    redis = new Redis({
+      url: `redis://${host}:${port}`,
+      token: password  // Use the password as the token
+    });
+
   } catch (error) {
     initializationError = error;
     console.error('Failed to initialize Redis client:', error);
